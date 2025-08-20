@@ -2,93 +2,58 @@ pipeline {
     agent any
 
     environment {
-        # You can override these with Jenkins Credentials later
-        PORT = "4000"
-        NODE_ENV = "development"
-        JWT_SECRET = "supersecretkey"
-        MONGO_URI = "mongodb://localhost:27017/wanderlust"
-        GOOGLE_CLIENT_ID = "dummy-client-id"
-        GOOGLE_CLIENT_SECRET = "dummy-client-secret"
-        GOOGLE_CALLBACK_URL = "http://localhost:4000/auth/google/callback"
-        SESSION_SECRET = "supersecretkey"
-        EMAIL_HOST = "smtp.gmail.com"
-        EMAIL_PORT = "587"
-        EMAIL_USER = "your-email@gmail.com"
-        EMAIL_PASS = "your-email-password"
-        REDIS_HOST = "127.0.0.1"
-        REDIS_PORT = "6379"
+        // You can override these with Jenkins Credentials later
+        DOCKER_IMAGE = "wanderlust-app"
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/pl-bujji05/wanderlust.git'
+                git branch: 'main', url: 'https://github.com/arya01493/wanderlust.git'
             }
         }
 
-        stage('Install Backend Dependencies') {
+        stage('Install Dependencies') {
             steps {
-                dir('backend') {
-                    sh 'npm install'
-                }
+                sh 'npm install'
             }
         }
 
-        stage('Create .env File') {
+        stage('Run Tests') {
             steps {
-                dir('backend') {
-                    sh '''
-                    cat > .env <<EOL
-PORT=${PORT}
-NODE_ENV=${NODE_ENV}
-JWT_SECRET=${JWT_SECRET}
-MONGO_URI=${MONGO_URI}
-GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL}
-SESSION_SECRET=${SESSION_SECRET}
-EMAIL_HOST=${EMAIL_HOST}
-EMAIL_PORT=${EMAIL_PORT}
-EMAIL_USER=${EMAIL_USER}
-EMAIL_PASS=${EMAIL_PASS}
-REDIS_HOST=${REDIS_HOST}
-REDIS_PORT=${REDIS_PORT}
-EOL
-                    '''
-                }
+                sh 'npm test'
             }
         }
 
-        stage('Install Frontend Dependencies') {
+        stage('Build') {
             steps {
-                dir('frontend') {
-                    sh 'npm install'
-                }
+                sh 'npm run build'
             }
         }
 
-        stage('Build Frontend') {
+        stage('Docker Build') {
             steps {
-                dir('frontend') {
-                    sh 'npm run build'
-                }
+                sh "docker build -t ${DOCKER_IMAGE}:latest ."
             }
         }
 
-        stage('Start Backend') {
+        stage('Docker Run') {
             steps {
-                dir('backend') {
-                    sh 'nohup npm start &'
-                }
+                sh "docker run -d -p 3000:3000 --name wanderlust_container ${DOCKER_IMAGE}:latest"
             }
         }
+    }
 
-        stage('Start Frontend') {
-            steps {
-                dir('frontend') {
-                    sh 'nohup npm start &'
-                }
-            }
+    post {
+        always {
+            echo 'Cleaning up...'
+            sh 'docker ps -aq --filter "name=wanderlust_container" | xargs -r docker rm -f || true'
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
         }
     }
 }
